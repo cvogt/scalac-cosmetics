@@ -40,4 +40,4 @@ Installation:
 Usage (adjust path):
 ------------------------------------------
 
-	sbt | java -jar scalac-cosmetics/target/scala-2.11/scalac-cosmetics-assembly-0.1.jar
+	sbt | java -jar scalac-cosmetics/target/scala-2.12/scalac-cosmetics-assembly-0.2.jar

@@ -22,6 +22,82 @@ object Main {
     yellow _
   )
 
+  def formatFoundRequired(found: String, required: String) = {
+    case class MyType(
+        qualifiedName: List[String],
+        children: Seq[MyType]
+    ) {
+      def name = {
+        qualifiedName.last
+      }
+
+      def prettyPrint: String =
+        if (children.size == 2 && !name.exists(_.isLetterOrDigit)) {
+          children(0).prettyPrint ++ " " ++ name ++ " " ++ children(1).prettyPrint
+        } else if (children.nonEmpty) {
+          name ++ "[ " ++ children.map(_.prettyPrint).mkString(", ") ++ " ]"
+        } else {
+          name
+        }
+
+      def imports(color: String => String): Seq[String] = {
+        (
+          if (qualifiedName.size > 1)
+            Seq(
+              qualifiedName.dropRight(1).mkString(".") ++ "." ++ color(
+                qualifiedName.last))
+          else Seq()
+        ) ++ children.flatMap(_.imports(color))
+      }
+    }
+    def parse(s: String): MyType = parseName(s.parse[meta.Type].get)
+
+    def parseName(t: scala.meta.Tree): MyType = t match {
+      case Type.Name(name) =>
+        MyType(name :: Nil, Seq())
+      case Term.Name(name) =>
+        MyType(name :: Nil, Seq())
+      case Term.Select(prefix, Term.Name(name)) =>
+        val p = parseName(prefix)
+        p.copy(qualifiedName = p.qualifiedName :+ name)
+      case Type.Select(prefix, Type.Name(name)) =>
+        val p = parseName(prefix)
+        p.copy(qualifiedName = p.qualifiedName :+ name)
+      case Type.Apply(name, names) =>
+        parseName(name).copy(children = names.map(parseName))
+      case Type.Singleton(sel: Term.Select) =>
+        parseName(sel)
+      case other =>
+        MyType("other: " + other.show[Structure] :: Nil, Seq())
+    }
+
+    println("")
+    try {
+      val ConstantTypeSuffix = "\\([0-9]+\\)".r
+      val ConstantTypeParamSuffix = "\\[[\\w]+\\]".r
+      val requiredParsed = parse(ConstantTypeSuffix.replaceAllIn(required, ""))
+      val foundParsed = parse(
+        ConstantTypeParamSuffix
+          .replaceAllIn(ConstantTypeSuffix.replaceAllIn(found, ""), "")
+      )
+      val is =
+        (requiredParsed.imports(red) ++ foundParsed.imports(green)).distinct.sorted
+          .map("import " ++ _)
+      if (is.nonEmpty) {
+        is.foreach(println)
+        println("")
+      }
+      println(
+        "required" ++ ": " ++ green(requiredParsed.prettyPrint) ++ ", found" ++ ": " ++ red(
+          foundParsed.prettyPrint))
+    } catch {
+      case e: scala.meta.ParseException =>
+        println("Parse Exception " + e.shortMessage)
+        println("required" ++ ": " ++ green(required))
+        println("found" ++ "   : " ++ red(found))
+    }
+  }
+
   def main(args: Array[String]): Unit = {
     val in = new BufferedReader(new InputStreamReader(System.in))
 
@@ -46,13 +122,6 @@ object Main {
           .takeWhile(_ != 4)
           .takeWhile(_ != -1)
           .map(_.toChar)
-    //.map(_.replace(RED,""))
-    //.map(_.replace(RESET,""))
-    /*.filter(!_.contains("support was removed in 8.0"))
-    .filter(!_.contains("Loading global plugins from"))
-    .filter(!_.contains("Loading project definition from"))
-    .filter(!_.contains("Set current project to"))*/
-    //.map(_.map(s => "%x".format(s.toByte)).mkString)
 
     trait LinesOrContinue
     case class Line(
@@ -73,31 +142,6 @@ object Main {
         } else Stream(End(s))
       }
     }
-
-    /*
-      def processLines( s: Stream[Char] ): Stream[Char] = {
-        s match{
-          case _ if
-            Seq(
-              `[info] ` ++ "Loading global plugins from",
-              `[info] ` ++ "Loading project definition from",
-              `[info] ` ++ "Set current project to scala",
-              "Java HotSpot(TM) 64-Bit Server VM warning"
-            ).exists(s.startsWith(_))
-            =>
-            //println("4b"+tail.take(30).flatMap(_.toString.getBytes.map("%02x".format(_)).mkString).mkString)
-            val (line, tail) = s.splitLine
-            //println(line)
-            //println("4b"+newTail.take(30).flatMap(_.toString.getBytes.map("%02x".format(_)).mkString).mkString)
-            processLines(tail)
-          case _ if s.startsWith(`[error] `) =>
-            val lines = s.takeLinesWhileStartsWith(`[error] `)
-            process(lines.collect{ case Line(line) => line})
-            lines.collect{ case End(stream) => stream}.head
-          case _ =>
-            s
-        }
-      }*/
 
     @scala.annotation.tailrec
     def scan(s: Stream[Char]): Unit = {
@@ -164,71 +208,6 @@ object Main {
       )
     }
 
-    def formatFoundRequired(found: String, required: String) = {
-      case class MyType(
-          qualifiedName: List[String],
-          children: Seq[MyType]
-      ) {
-        def name = qualifiedName.last
-
-        def prettyPrint: String =
-          if (children.size == 2 && !name.exists(_.isLetterOrDigit)) {
-            children(0).prettyPrint ++ " " ++ name ++ " " ++ children(1).prettyPrint
-          } else if (children.nonEmpty) {
-            name ++ "[ " ++ children.map(_.prettyPrint).mkString(", ") ++ " ]"
-          } else name
-
-        def imports(color: String => String): Seq[String] = {
-          (
-            if (qualifiedName.size > 1)
-              Seq(
-                qualifiedName.dropRight(1).mkString(".") ++ "." ++ color(
-                  qualifiedName.last))
-            else Seq()
-          ) ++ children.flatMap(_.imports(color))
-        }
-      }
-      def parse(s: String):MyType = parseName(s.parse[meta.Type].get)
-
-      def parseName(t: scala.meta.Tree): MyType = t match {
-        case Type.Name(name) => MyType(name :: Nil, Seq())
-        case Term.Name(name) => MyType(name :: Nil, Seq())
-        case Term.Select(prefix, Term.Name(name)) =>
-          val p = parseName(prefix)
-          p.copy(qualifiedName = p.qualifiedName :+ name)
-        case Type.Select(prefix, Type.Name(name)) =>
-          val p = parseName(prefix)
-          p.copy(qualifiedName = p.qualifiedName :+ name)
-        case Type.Apply(name, names) =>
-          parseName(name).copy(children = names.map(parseName))
-        case Type.Singleton(sel:Term.Select) =>
-          parseName(sel)
-        case other => MyType("other: " + other.show[Structure] :: Nil, Seq())
-      }
-
-      println("")
-      try {
-        val ConstantTypeSuffix = "\\([0-9]+\\)".r
-        val requiredParsed = parse(
-          ConstantTypeSuffix.replaceAllIn(required, ""))
-        val foundParsed = parse(ConstantTypeSuffix.replaceAllIn(found, ""))
-        val is =
-          (requiredParsed.imports(red) ++ foundParsed.imports(green)).distinct.sorted
-            .map("import " ++ _)
-        if (is.nonEmpty) {
-          is.foreach(println)
-          println("")
-        }
-        println(
-          "required" ++ ": " ++ green(requiredParsed.prettyPrint) ++ ", found" ++ ": " ++ red(
-            foundParsed.prettyPrint))
-      } catch {
-        case e: scala.meta.ParseException =>
-          println("required" ++ ": " ++ green(required))
-          println("found" ++ "   : " ++ red(found))
-      }
-    }
-
     def formatCode(file: String,
                    lineNoStr: String,
                    code: String,
@@ -254,16 +233,12 @@ object Main {
 
       def identChar = (c: Char) => c.isLetter || c.isDigit
 
-      // || (c == ".")
-      //val errorCodeBeforeCaret = code.take(pos).reverse.takeWhile(identChar).reverse
       val errorCode = code.drop(pos).takeWhile(identChar)
 
       println(
         blue(lineNoStr ++ ": ")
           ++
-            code.take(pos) // - errorCodeBeforeCaret.size)
-        /*++
-          underline(blue(errorCodeBeforeCaret))*/
+            code.take(pos)
           ++
             background.red(white(underline(errorCode)))
           ++
@@ -272,16 +247,6 @@ object Main {
 
       println(blue((lineNo + 1).toString ++ ": ") ++ source(3))
       println(blue((lineNo + 2).toString ++ ": ") ++ source(4))
-
-      //println((" "*lineNo.size) ++ "  " ++ caretPrefix + bold(magenta("^")) )
-
-      /*
-        lazy val nonIdentChars = Seq(
-          '\u0020', '\u0009', '\u000D', '\u000A', '(', ')', '[', ']', '{', '}', '`', ''', '"', '.', ';', ','
-        ).map(_.toString).map(Regex.quote).mkString("|")
-      }
-
-     */
     }
 
     import scala.util.matching.Regex
@@ -290,9 +255,7 @@ object Main {
       def unapplySeq(s: String) = {
         val uncolored = ansi.strip(s)
         val cleaned = uncolored.substring(uncolored.indexOf(" ") + 1)
-        //println(cleaned)
         val res = pattern.r.unapplySeq(cleaned)
-        //println(res)
         res
       }
     }
@@ -308,12 +271,9 @@ object Main {
     lazy val Caret = MatchClean("(.*)\\^")
 
     def process(input: Stream[Char]): Stream[Char] = {
-      //println("...")
-      //println("processing lines")
       object TakeLine {
         def unapply(s: Stream[Char]) = Option {
           val str = s.takeWhile(_ != '\n').mkString
-          //println("str: "+str+" |")
           (str, s.drop(str.size + 1))
         }
       }
@@ -329,44 +289,15 @@ object Main {
         }
       }
       input match {
-        /*case NotEnoughArguments(_,_,_,_) =>
-          //println("1")
-          input.tail match {
-            case
-              Anything(message)
-              #:: Anything(code)
-              #:: Caret(caretPrefix)
-              #:: tail
-              =>
-              tail
-          }*/
         case TakeLine(
             FileLineMsg(file, lineNoStr, msg),
             foo
             ) =>
-          //println("2")
           println(("_") * 80)
           println("")
           println(formatMsgAndLine(msg, file, lineNoStr))
-          //println(";;;")
 
           foo match {
-            /*case
-              TakeLine(
-                Found(found),
-                TakeLine(
-                  Anything(_),
-                  TakeLine(
-                    Required(required),
-                    TakeLine(
-                      Anything(code),
-                  TakeBeforeCaret(
-                      caretPrefix,
-                      tail
-              )
-              )))) =>
-              println(":::")
-              foo*/
             case TakeLine(Found(found),
                           TakeLine(Required(required),
                                    TakeLine(Anything(code),
@@ -374,9 +305,15 @@ object Main {
                                               caretPrefix,
                                               tail
                                             )))) =>
-              /*println((
-                file, lineNoStr, found, required, code, caretPrefix
-              ))*/
+              println(
+                (
+                  file,
+                  lineNoStr,
+                  found,
+                  required,
+                  code,
+                  caretPrefix
+                ))
               formatFoundRequired(
                 found,
                 required
@@ -394,9 +331,6 @@ object Main {
                             caretPrefix,
                             tail
                           )) =>
-              /*println((
-                file, lineNoStr, found, required, code, caretPrefix
-              ))*/
               formatCode(
                 file,
                 lineNoStr,
@@ -411,9 +345,6 @@ object Main {
                                      caretPrefix,
                                      tail
                                    ))) =>
-              /*println((
-                file, lineNoStr, found, required, code, caretPrefix
-              ))*/
               println(msg2)
               formatCode(
                 file,
@@ -431,9 +362,15 @@ object Main {
                                                        caretPrefix,
                                                        tail
                                                      ))))) =>
-              /*println((
-                file, lineNoStr, found, required, code, caretPrefix
-              ))*/
+              println(
+                (
+                  file,
+                  lineNoStr,
+                  found,
+                  required,
+                  code,
+                  caretPrefix
+                ))
               formatFoundRequired(
                 found,
                 required
@@ -446,9 +383,23 @@ object Main {
               )
               tail.drop(1)
 
-            case _ => foo
+            case TakeLine(Found(found),
+                          TakeLine(Required(required),
+                                   TakeLine(Anything(_),
+                                            TakeLine(Anything(code),
+                                                     TakeBeforeCaret(
+                                                       caretPrefix,
+                                                       tail
+                                                     ))))) =>
+              println(formatFoundRequired(found, required))
+              println(formatCode(file, lineNoStr, code, caretPrefix))
+              tail.drop(1)
+
+            case _ =>
+              foo
           }
-        case _ => input
+        case _ =>
+          input
       }
     }
   }

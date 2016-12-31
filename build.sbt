@@ -1,10 +1,10 @@
 name := "scalac-cosmetics"
 
-version := "0.1"
+version := "0.2"
 
 libraryDependencies ++= Seq(
-  "org.scalameta" %% "scalameta" % "0.0.2",
-  "org.scala-lang" % "scala-compiler" % "2.11.7"
+  "org.scalameta" %% "scalameta" % "1.4.0",
+  "org.scala-lang" % "scala-compiler" % "2.12.1"
 )
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.12.1"

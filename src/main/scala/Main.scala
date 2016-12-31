@@ -201,6 +201,8 @@ object Main {
           p.copy(qualifiedName = p.qualifiedName :+ name)
         case Type.Apply(name, names) =>
           parseName(name).copy(children = names.map(parseName))
+        case Type.Singleton(sel:Term.Select) =>
+          parseName(sel)
         case other => MyType("other: " + other.show[Structure] :: Nil, Seq())
       }
 
